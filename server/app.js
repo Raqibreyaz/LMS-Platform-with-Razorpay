@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import express from "express";
 import cors from "cors";
 import Razorpay from "razorpay";
+import { validateWebhookSignature } from "razorpay/dist/utils/razorpay-utils.js";
 import Nodemailer from "nodemailer";
 import cookieParser from "cookie-parser";
 import { writeFile } from "node:fs/promises";
@@ -11,13 +12,13 @@ import orders from "./orders.json" with { type: "json" };
 import sessions from "./sessions.json" with { type: "json" };
 import otps from "./otps.json" with { type: "json" };
 
-const COURSES_FILE = "./courses.json";
 const ORDERS_FILE = "./orders.json";
 const SESSIONS_FILE = "./sessions.json";
 const OTPS_FILE = "./otps.json";
 
-const keyId = process.env.RZP_KEY_ID || "rzp_test_RBXbFzZlYlToFb";
-const keySecret = process.env.RZP_KEY_SECRET || "ZycoIo5VmfC4Sj5tFAzHSgpP";
+const keyId = process.env.RZP_KEY_ID;
+const keySecret = process.env.RZP_KEY_SECRET;
+const webhookSecret = process.env.RZP_WEBHOOK_SECRET;
 
 // Create a transporter using SMTP
 const transporter = Nodemailer.createTransport({
@@ -35,6 +36,8 @@ const rzpInstance = new Razorpay({
   key_secret: keySecret,
 });
 
+const webhookEvents = {};
+
 const app = express();
 app.use(
   cors({
@@ -42,6 +45,7 @@ app.use(
     credentials: true,
   }),
 );
+
 app.use(express.json());
 app.use(cookieParser());
 
@@ -82,6 +86,8 @@ app.get("/me", (req, res, next) => {
   const sessionId = req.cookies.session;
 
   const session = { ...sessions.find((session) => session.id === sessionId) };
+
+  delete session.ip;
 
   res.json({ session });
 });
@@ -282,26 +288,47 @@ app.post("/create-order", async (req, res) => {
   });
 });
 
+app.post("/hello-world", async (req, res, next) => {
+  const stringifiedBody = JSON.stringify(req.body || {});
+  const webhookSignature = req.headers["x-razorpay-signature"];
+  const eventId = req.headers["x-razorpay-event-id"];
+
+  // process only when it is valid signature with data
+  if (
+    validateWebhookSignature(stringifiedBody, webhookSignature, webhookSecret)
+  ) {
+    // skip if the same event had happened
+    if (
+      !webhookEvents[eventId] &&
+      req.body.payload.payment.entity.status === "authorized"
+    ) {
+      webhookEvents[eventId] = true;
+
+      const orderId = req.body.payload.payment.entity.order_id;
+      const userEmail = req.body.payload.payment.entity.email;
+
+      await pushOrder(orderId, userEmail);
+    }
+
+    return res.sendStatus(200);
+  }
+
+  return res.sendStatus(400);
+});
+
 app.post("/complete-order", async (req, res) => {
   const sessionId = req.cookies.session;
   const session = sessions.find((session) => session.id === sessionId);
 
   const orderId = req.body?.orderId;
   const order = await rzpInstance.orders.fetch(orderId);
-  console.log(order);
 
   if (!order) {
     return res.status(404).json({ error: "Invalid order id" });
   }
 
   if (order.status === "paid") {
-    orders.push({
-      orderId,
-      courses: [...session.cart],
-      userEmail: session.userEmail,
-      orderStatus: "paid",
-    });
-    await writeFile(ORDERS_FILE, JSON.stringify(orders, null, 2));
+    await pushOrder(orderId, session.userEmail, session.cart);
 
     session.purchasedCourses = [...session.purchasedCourses, ...session.cart];
     session.cart = [];
@@ -315,3 +342,19 @@ app.post("/complete-order", async (req, res) => {
 app.listen(4000, () => {
   console.log("Server started");
 });
+
+async function pushOrder(orderId, userEmail, cart = []) {
+  let order = orders.find((order) => order.orderId === orderId);
+
+  if (!order) {
+    order = {
+      orderId,
+      userEmail,
+      courses: [...cart],
+      orderStatus: "paid",
+    };
+    orders.push(order);
+  } else if (cart.length) order.courses.push(...cart);
+
+  await writeFile(ORDERS_FILE, JSON.stringify(orders, null, 2));
+}

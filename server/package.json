@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch --env-file-if-exists=.env app.js",
-    "start": "node --env-file-if-exists=.env app.js"
+    "start": "node --env-file-if-exists=.env app.js",
+    "logs": "node --env-file-if-exists=.env app.js > logs.txt"
   },
   "keywords": [],
   "author": "",
@@ -13,6 +14,8 @@
   "description": "",
   "dependencies": {
     "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
     "nodemailer": "^8.0.5",
     "razorpay": "^2.9.6"
   }

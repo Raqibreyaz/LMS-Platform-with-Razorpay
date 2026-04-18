@@ -7,9 +7,17 @@
     "userMobile": "9876543211",
     "userName": "Imran",
     "purchasedCourses": [
-      "64f9ef2b7a3c450018a9d6b2",
-      "64fb2d7a9f4c11002e6d3c48",
-      "64fa1c9e3b7d92001c4a7f21"
+      "64fa1c9e3b7d92001c4a7f21",
+      "64fb2d7a9f4c11002e6d3c48"
     ]
+  },
+  {
+    "cart": [],
+    "id": "34fd56a1-02bc-4068-a460-8f6fe8a55051",
+    "ip": "::ffff:127.0.0.1",
+    "userEmail": null,
+    "userMobile": null,
+    "userName": null,
+    "purchasedCourses": []
   }
 ]
